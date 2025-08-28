@@ -1505,3 +1505,68 @@ func _upload1Mw() []app.HandlerFunc {
 	// your code...
 	return nil
 }
+
+func _conversation1Mw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _openapicreateconversationMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _coze_web_appMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _impersonatecozeuserMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _botsMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _opengetbotinfoMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _deleteconversationapiMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _updateconversationapiMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _conversations0Mw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _chatMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _cancelchatapiMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _appsMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}
+
+func _getonlineappdataMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}

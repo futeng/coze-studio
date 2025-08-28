@@ -18,7 +18,6 @@ package workflow
 
 import (
 	"context"
-
 	"github.com/cloudwego/eino/compose"
 	einoCompose "github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -64,6 +63,17 @@ func (i *impl) SyncExecuteWorkflow(ctx context.Context, config workflowModel.Exe
 
 func (i *impl) WithExecuteConfig(cfg workflowModel.ExecuteConfig) einoCompose.Option {
 	return i.DomainSVC.WithExecuteConfig(cfg)
+}
+
+func (i *impl) StreamResume(ctx context.Context, req *entity.ResumeRequest, config workflowModel.ExecuteConfig) (*schema.StreamReader[*entity.Message], error) {
+	return i.DomainSVC.StreamResume(ctx, req, config)
+}
+func (i *impl) StreamExecute(ctx context.Context, config workflowModel.ExecuteConfig, input map[string]any) (*schema.StreamReader[*workflowEntity.Message], error) {
+	return i.DomainSVC.StreamExecute(ctx, config, input)
+}
+
+func (i *impl) InitApplicationDefaultConversationTemplate(ctx context.Context, spaceID int64, appID int64, userID int64) error {
+	return i.DomainSVC.InitApplicationDefaultConversationTemplate(ctx, spaceID, appID, userID)
 }
 
 func (i *impl) WithMessagePipe() (compose.Option, *schema.StreamReader[*entity.Message], func()) {
