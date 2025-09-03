@@ -75,7 +75,7 @@ func (i *invokableWorkflow) Info(_ context.Context) (*schema.ToolInfo, error) {
 	return i.info, nil
 }
 
-func resumeOnce(rInfo *entity.ResumeRequest, callID string, allIEs map[string]*entity.ToolInterruptEvent) {
+func resumeOnce(rInfo *entity.ResumeRequest, callID string, allIEs map[string]int64) {
 	if rInfo != nil {
 		rInfo.Resumed = true
 	}
@@ -144,7 +144,7 @@ func (i *invokableWorkflow) InvokableRun(ctx context.Context, argumentsInJSON st
 	for interruptedCallID := range allIEs {
 		if callID == interruptedCallID {
 			previouslyInterrupted = true
-			previousExecuteID = allIEs[interruptedCallID].ExecuteID
+			previousExecuteID = allIEs[interruptedCallID]
 			break
 		}
 	}
@@ -286,7 +286,7 @@ func (s *streamableWorkflow) StreamableRun(ctx context.Context, argumentsInJSON 
 	for interruptedCallID := range allIEs {
 		if callID == interruptedCallID {
 			previouslyInterrupted = true
-			previousExecuteID = allIEs[interruptedCallID].ExecuteID
+			previousExecuteID = allIEs[interruptedCallID]
 			break
 		}
 	}
