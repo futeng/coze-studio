@@ -1,0 +1,174 @@
+/*
+ * Copyright 2025 coze-dev Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package pulsar
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
+)
+
+// MockConsumerHandler for testing
+type mockConsumerHandler struct {
+	messages [][]byte
+}
+
+func (m *mockConsumerHandler) HandleMessage(ctx context.Context, msg *eventbus.Message) error {
+	m.messages = append(m.messages, msg.Body)
+	return nil
+}
+
+func TestPulsarProducerValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		serviceURL string
+		topic      string
+		group      string
+		wantErr    bool
+	}{
+		{
+			name:       "empty service URL",
+			serviceURL: "",
+			topic:      "test-topic",
+			group:      "test-group",
+			wantErr:    true,
+		},
+		{
+			name:       "empty topic",
+			serviceURL: "pulsar://localhost:6650",
+			topic:      "",
+			group:      "test-group",
+			wantErr:    true,
+		},
+		{
+			name:       "valid parameters - will fail connection but pass validation",
+			serviceURL: "pulsar://invalid-host:6650",
+			topic:      "test-topic",
+			group:      "test-group",
+			wantErr:    true, // Connection will fail but validation passes
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewProducer(tt.serviceURL, tt.topic, tt.group)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewProducer() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPulsarConsumerValidation(t *testing.T) {
+	handler := &mockConsumerHandler{}
+
+	tests := []struct {
+		name       string
+		serviceURL string
+		topic      string
+		group      string
+		handler    eventbus.ConsumerHandler
+		wantErr    bool
+	}{
+		{
+			name:       "empty service URL",
+			serviceURL: "",
+			topic:      "test-topic",
+			group:      "test-group",
+			handler:    handler,
+			wantErr:    true,
+		},
+		{
+			name:       "empty topic",
+			serviceURL: "pulsar://localhost:6650",
+			topic:      "",
+			group:      "test-group",
+			handler:    handler,
+			wantErr:    true,
+		},
+		{
+			name:       "empty group",
+			serviceURL: "pulsar://localhost:6650",
+			topic:      "test-topic",
+			group:      "",
+			handler:    handler,
+			wantErr:    true,
+		},
+		{
+			name:       "nil handler",
+			serviceURL: "pulsar://localhost:6650",
+			topic:      "test-topic",
+			group:      "test-group",
+			handler:    nil,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := RegisterConsumer(tt.serviceURL, tt.topic, tt.group, tt.handler)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RegisterConsumer() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// Integration test - requires running Pulsar instance
+func TestPulsarIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	serviceURL := "pulsar://localhost:6650"
+	topic := "test-topic-integration"
+	group := "test-group-integration"
+
+	// Test producer creation
+	producer, err := NewProducer(serviceURL, topic, group)
+	if err != nil {
+		t.Skipf("Skipping integration test - Pulsar not available: %v", err)
+	}
+	defer func() {
+		if p, ok := producer.(*producerImpl); ok {
+			p.close()
+		}
+	}()
+
+	// Test message sending
+	testMessage := []byte("test message")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = producer.Send(ctx, testMessage)
+	if err != nil {
+		t.Errorf("Failed to send message: %v", err)
+	}
+
+	// Test batch sending
+	batchMessages := [][]byte{
+		[]byte("batch message 1"),
+		[]byte("batch message 2"),
+	}
+
+	err = producer.BatchSend(ctx, batchMessages)
+	if err != nil {
+		t.Errorf("Failed to send batch messages: %v", err)
+	}
+}

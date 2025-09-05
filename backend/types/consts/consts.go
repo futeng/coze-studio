@@ -59,6 +59,7 @@ const (
 	MQServer                 = "MQ_NAME_SERVER"
 	RMQSecretKey             = "RMQ_SECRET_KEY"
 	RMQAccessKey             = "RMQ_ACCESS_KEY"
+	PulsarServiceURL         = "PULSAR_SERVICE_URL"
 	RMQTopicApp              = "opencoze_search_app"
 	RMQTopicResource         = "opencoze_search_resource"
 	RMQTopicKnowledge        = "opencoze_knowledge"
