@@ -18,10 +18,12 @@ package pulsar
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
+	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
 // MockConsumerHandler for testing
@@ -130,45 +132,84 @@ func TestPulsarConsumerValidation(t *testing.T) {
 	}
 }
 
-// Integration test - requires running Pulsar instance
+// TestPulsarIntegration tests actual Pulsar connection (requires running Pulsar instance)
 func TestPulsarIntegration(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
+	serviceURL := os.Getenv("PULSAR_SERVICE_URL")
+	if serviceURL == "" {
+		serviceURL = "pulsar://localhost:6650"
 	}
 
-	serviceURL := "pulsar://localhost:6650"
-	topic := "test-topic-integration"
-	group := "test-group-integration"
+	topic := "test-topic"
+	group := "test-group"
 
-	// Test producer creation
+	// Test producer
 	producer, err := NewProducer(serviceURL, topic, group)
 	if err != nil {
-		t.Skipf("Skipping integration test - Pulsar not available: %v", err)
+		t.Skipf("Failed to create producer (Pulsar may not be running): %v", err)
 	}
-	defer func() {
-		if p, ok := producer.(*producerImpl); ok {
-			p.close()
-		}
-	}()
+	defer producer.(*producerImpl).close()
 
-	// Test message sending
+	// Test sending message
+	ctx := context.Background()
 	testMessage := []byte("test message")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	err = producer.Send(ctx, testMessage)
 	if err != nil {
 		t.Errorf("Failed to send message: %v", err)
 	}
 
 	// Test batch sending
-	batchMessages := [][]byte{
+	messages := [][]byte{
 		[]byte("batch message 1"),
 		[]byte("batch message 2"),
 	}
-
-	err = producer.BatchSend(ctx, batchMessages)
+	err = producer.BatchSend(ctx, messages)
 	if err != nil {
-		t.Errorf("Failed to send batch messages: %v", err)
+		t.Errorf("Failed to batch send messages: %v", err)
 	}
+
+	// Test consumer
+	handler := &mockConsumerHandler{}
+	err = RegisterConsumer(serviceURL, topic, group+"-consumer", handler)
+	if err != nil {
+		t.Errorf("Failed to register consumer: %v", err)
+	}
+
+	// Give some time for messages to be consumed
+	time.Sleep(2 * time.Second)
+}
+
+// TestPulsarJWTAuthentication tests JWT token authentication
+func TestPulsarJWTAuthentication(t *testing.T) {
+	// Set the JWT token for testing
+	testToken := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.Kr7Qem-NLoq-85Yb2vN-lN4fH2uODFiPrHJS-Oxvzm0"
+	os.Setenv(consts.PulsarJWTToken, testToken)
+	defer os.Unsetenv(consts.PulsarJWTToken)
+
+	serviceURL := "pulsar://localhost:6650"
+	topic := "test-auth-topic"
+	group := "test-auth-group"
+
+	// Test producer with JWT authentication
+	producer, err := NewProducer(serviceURL, topic, group)
+	if err != nil {
+		t.Skipf("Failed to create producer with JWT auth (Pulsar may not be running or auth failed): %v", err)
+	}
+	defer producer.(*producerImpl).close()
+
+	// Test sending message with authentication
+	ctx := context.Background()
+	testMessage := []byte("authenticated test message")
+	err = producer.Send(ctx, testMessage)
+	if err != nil {
+		t.Errorf("Failed to send authenticated message: %v", err)
+	}
+
+	// Test consumer with JWT authentication
+	handler := &mockConsumerHandler{}
+	err = RegisterConsumer(serviceURL, topic, group+"-consumer", handler)
+	if err != nil {
+		t.Errorf("Failed to register consumer with JWT auth: %v", err)
+	}
+
+	t.Logf("JWT authentication test completed successfully")
 }

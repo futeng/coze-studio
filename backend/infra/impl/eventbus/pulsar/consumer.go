@@ -19,13 +19,15 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
 	"github.com/coze-dev/coze-studio/backend/pkg/lang/signal"
-	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 	"github.com/coze-dev/coze-studio/backend/pkg/safego"
+	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
 func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.ConsumerHandler, opts ...eventbus.ConsumerOpt) error {
@@ -48,10 +50,18 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 		opt(option)
 	}
 
-	// Create Pulsar client
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
+	// Prepare client options
+	clientOptions := pulsar.ClientOptions{
 		URL: serviceURL,
-	})
+	}
+
+	// Add JWT authentication if token is provided
+	if jwtToken := os.Getenv(consts.PulsarJWTToken); jwtToken != "" {
+		clientOptions.Authentication = pulsar.NewAuthenticationToken(jwtToken)
+	}
+
+	// Create Pulsar client
+	client, err := pulsar.NewClient(clientOptions)
 	if err != nil {
 		return fmt.Errorf("create pulsar client failed: %w", err)
 	}
@@ -91,7 +101,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 				// Receive message
 				msg, err := consumer.Receive(ctx)
 				if err != nil {
-					logs.Errorf("receive pulsar message error: %v", err)
+					log.Printf("receive pulsar message error: %v", err)
 					continue
 				}
 
@@ -104,7 +114,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 
 				// Handle message
 				if err := consumerHandler.HandleMessage(ctx, eventMsg); err != nil {
-					logs.Errorf("handle pulsar message failed, topic: %s, group: %s, err: %v", topic, group, err)
+					log.Printf("handle pulsar message failed, topic: %s, group: %s, err: %v", topic, group, err)
 					// Negative acknowledge on error
 					consumer.Nack(msg)
 					continue

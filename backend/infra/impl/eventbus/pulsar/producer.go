@@ -19,12 +19,14 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
 	"github.com/coze-dev/coze-studio/backend/pkg/lang/signal"
 	"github.com/coze-dev/coze-studio/backend/pkg/safego"
+	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
 type producerImpl struct {
@@ -35,19 +37,26 @@ type producerImpl struct {
 
 func NewProducer(serviceURL, topic, group string) (eventbus.Producer, error) {
 	if serviceURL == "" {
-		return nil, fmt.Errorf("service URL is empty")
+		return nil, fmt.Errorf("pulsar service URL is required")
+	}
+	if topic == "" {
+		return nil, fmt.Errorf("topic is required")
 	}
 
-	if topic == "" {
-		return nil, fmt.Errorf("topic is empty")
+	// Prepare client options
+	clientOptions := pulsar.ClientOptions{
+		URL: serviceURL,
+	}
+
+	// Add JWT authentication if token is provided
+	if jwtToken := os.Getenv(consts.PulsarJWTToken); jwtToken != "" {
+		clientOptions.Authentication = pulsar.NewAuthenticationToken(jwtToken)
 	}
 
 	// Create Pulsar client
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := pulsar.NewClient(clientOptions)
 	if err != nil {
-		return nil, fmt.Errorf("create pulsar client failed: %w", err)
+		return nil, fmt.Errorf("failed to create pulsar client: %w", err)
 	}
 
 	// Create producer
