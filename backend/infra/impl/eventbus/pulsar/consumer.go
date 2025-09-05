@@ -19,13 +19,13 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
 	"github.com/coze-dev/coze-studio/backend/pkg/lang/signal"
+	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 	"github.com/coze-dev/coze-studio/backend/pkg/safego"
 	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
@@ -101,7 +101,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 				// Receive message
 				msg, err := consumer.Receive(ctx)
 				if err != nil {
-					log.Printf("receive pulsar message error: %v", err)
+					logs.Errorf("receive pulsar message error: %v", err)
 					continue
 				}
 
@@ -114,7 +114,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 
 				// Handle message
 				if err := consumerHandler.HandleMessage(ctx, eventMsg); err != nil {
-					log.Printf("handle pulsar message failed, topic: %s, group: %s, err: %v", topic, group, err)
+					logs.Errorf("handle pulsar message failed, topic: %s, group: %s, err: %v", topic, group, err)
 					// Negative acknowledge on error
 					consumer.Nack(msg)
 					continue
