@@ -94,6 +94,14 @@ func (p *producerImpl) BatchSend(ctx context.Context, bodyArr [][]byte, opts ...
 		opt(&option)
 	}
 
+	// Use Pulsar's async send with batch collection for better performance
+	type sendResult struct {
+		err error
+	}
+
+	resultChan := make(chan sendResult, len(bodyArr))
+	pendingCount := len(bodyArr)
+
 	for _, body := range bodyArr {
 		msg := &pulsar.ProducerMessage{
 			Payload: body,
@@ -104,10 +112,21 @@ func (p *producerImpl) BatchSend(ctx context.Context, bodyArr [][]byte, opts ...
 			msg.Key = *option.ShardingKey
 		}
 
-		// Send message synchronously
-		_, err := p.producer.Send(ctx, msg)
-		if err != nil {
-			return fmt.Errorf("[pulsarProducer] send message failed: %w", err)
+		// Send message asynchronously for better batching performance
+		p.producer.SendAsync(ctx, msg, func(messageID pulsar.MessageID, producerMessage *pulsar.ProducerMessage, err error) {
+			resultChan <- sendResult{err: err}
+		})
+	}
+
+	// Wait for all messages to be sent
+	for i := 0; i < pendingCount; i++ {
+		select {
+		case result := <-resultChan:
+			if result.err != nil {
+				return fmt.Errorf("[pulsarProducer] batch send message failed: %w", result.err)
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("[pulsarProducer] batch send cancelled: %w", ctx.Err())
 		}
 	}
 

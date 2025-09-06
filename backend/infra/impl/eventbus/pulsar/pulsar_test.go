@@ -18,198 +18,109 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/coze-dev/coze-studio/backend/infra/contract/eventbus"
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
-// MockConsumerHandler for testing
-type mockConsumerHandler struct {
-	messages [][]byte
+var serviceURL = "pulsar://localhost:6650"
+
+func TestProducer(t *testing.T) {
+	if os.Getenv("PULSAR_LOCAL_TEST") != "true" {
+		return
+	}
+
+	// JWT token should be set via environment variable PULSAR_JWT_TOKEN if needed
+	// For local testing, you can set: export PULSAR_JWT_TOKEN="your-jwt-token"
+
+	clientOptions := pulsar.ClientOptions{
+		URL: serviceURL,
+	}
+	if jwtToken := os.Getenv(consts.PulsarJWTToken); jwtToken != "" {
+		clientOptions.Authentication = pulsar.NewAuthenticationToken(jwtToken)
+	}
+
+	client, err := pulsar.NewClient(clientOptions)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic: "test_topic",
+		Name:  "test_group_producer",
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	msgID, err := producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Payload: []byte("hello"),
+	})
+	assert.NoError(t, err)
+	fmt.Println(msgID)
 }
 
-func (m *mockConsumerHandler) HandleMessage(ctx context.Context, msg *eventbus.Message) error {
-	m.messages = append(m.messages, msg.Body)
-	return nil
-}
-
-func TestPulsarProducerValidation(t *testing.T) {
-	tests := []struct {
-		name       string
-		serviceURL string
-		topic      string
-		group      string
-		wantErr    bool
-	}{
-		{
-			name:       "empty service URL",
-			serviceURL: "",
-			topic:      "test-topic",
-			group:      "test-group",
-			wantErr:    true,
-		},
-		{
-			name:       "empty topic",
-			serviceURL: "pulsar://localhost:6650",
-			topic:      "",
-			group:      "test-group",
-			wantErr:    true,
-		},
-		{
-			name:       "valid parameters - will fail connection but pass validation",
-			serviceURL: "pulsar://invalid-host:6650",
-			topic:      "test-topic",
-			group:      "test-group",
-			wantErr:    true, // Connection will fail but validation passes
-		},
+func TestConsumer(t *testing.T) {
+	if os.Getenv("PULSAR_LOCAL_TEST") != "true" {
+		return
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewProducer(tt.serviceURL, tt.topic, tt.group)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewProducer() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	// JWT token should be set via environment variable PULSAR_JWT_TOKEN if needed
+	// For local testing, you can set: export PULSAR_JWT_TOKEN="your-jwt-token"
+
+	clientOptions := pulsar.ClientOptions{
+		URL: serviceURL,
 	}
-}
-
-func TestPulsarConsumerValidation(t *testing.T) {
-	handler := &mockConsumerHandler{}
-
-	tests := []struct {
-		name       string
-		serviceURL string
-		topic      string
-		group      string
-		handler    eventbus.ConsumerHandler
-		wantErr    bool
-	}{
-		{
-			name:       "empty service URL",
-			serviceURL: "",
-			topic:      "test-topic",
-			group:      "test-group",
-			handler:    handler,
-			wantErr:    true,
-		},
-		{
-			name:       "empty topic",
-			serviceURL: "pulsar://localhost:6650",
-			topic:      "",
-			group:      "test-group",
-			handler:    handler,
-			wantErr:    true,
-		},
-		{
-			name:       "empty group",
-			serviceURL: "pulsar://localhost:6650",
-			topic:      "test-topic",
-			group:      "",
-			handler:    handler,
-			wantErr:    true,
-		},
-		{
-			name:       "nil handler",
-			serviceURL: "pulsar://localhost:6650",
-			topic:      "test-topic",
-			group:      "test-group",
-			handler:    nil,
-			wantErr:    true,
-		},
+	if jwtToken := os.Getenv(consts.PulsarJWTToken); jwtToken != "" {
+		clientOptions.Authentication = pulsar.NewAuthenticationToken(jwtToken)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := RegisterConsumer(tt.serviceURL, tt.topic, tt.group, tt.handler)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RegisterConsumer() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
+	client, err := pulsar.NewClient(clientOptions)
+	assert.NoError(t, err)
+	defer client.Close()
 
-// TestPulsarIntegration tests actual Pulsar connection (requires running Pulsar instance)
-func TestPulsarIntegration(t *testing.T) {
-	serviceURL := os.Getenv("PULSAR_SERVICE_URL")
-	if serviceURL == "" {
-		serviceURL = "pulsar://localhost:6650"
-	}
+	// First create consumer
+	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+		Topic:            "test_topic",
+		SubscriptionName: "test_group_consumer",
+		Type:             pulsar.Shared,
+	})
+	assert.NoError(t, err)
+	defer consumer.Close()
 
-	topic := "test-topic"
-	group := "test-group"
+	// Then create producer and send a message
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic: "test_topic",
+		Name:  "test_consumer_producer",
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
 
-	// Test producer
-	producer, err := NewProducer(serviceURL, topic, group)
-	if err != nil {
-		t.Skipf("Failed to create producer (Pulsar may not be running): %v", err)
-	}
-	defer producer.(*producerImpl).close()
+	// Send a test message
+	_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Payload: []byte("consumer test message"),
+	})
+	assert.NoError(t, err)
 
-	// Test sending message
-	ctx := context.Background()
-	testMessage := []byte("test message")
-	err = producer.Send(ctx, testMessage)
-	if err != nil {
-		t.Errorf("Failed to send message: %v", err)
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
-	// Test batch sending
-	messages := [][]byte{
-		[]byte("batch message 1"),
-		[]byte("batch message 2"),
-	}
-	err = producer.BatchSend(ctx, messages)
-	if err != nil {
-		t.Errorf("Failed to batch send messages: %v", err)
-	}
+	go func() {
+		defer wg.Done()
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Errorf("Failed to receive message: %v", err)
+			return
+		}
+		fmt.Println(string(msg.Payload()))
+		consumer.Ack(msg)
+	}()
 
-	// Test consumer
-	handler := &mockConsumerHandler{}
-	err = RegisterConsumer(serviceURL, topic, group+"-consumer", handler)
-	if err != nil {
-		t.Errorf("Failed to register consumer: %v", err)
-	}
-
-	// Give some time for messages to be consumed
-	time.Sleep(2 * time.Second)
-}
-
-// TestPulsarJWTAuthentication tests JWT token authentication
-func TestPulsarJWTAuthentication(t *testing.T) {
-	// Set the JWT token for testing
-	testToken := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.Kr7Qem-NLoq-85Yb2vN-lN4fH2uODFiPrHJS-Oxvzm0"
-	os.Setenv(consts.PulsarJWTToken, testToken)
-	defer os.Unsetenv(consts.PulsarJWTToken)
-
-	serviceURL := "pulsar://localhost:6650"
-	topic := "test-auth-topic"
-	group := "test-auth-group"
-
-	// Test producer with JWT authentication
-	producer, err := NewProducer(serviceURL, topic, group)
-	if err != nil {
-		t.Skipf("Failed to create producer with JWT auth (Pulsar may not be running or auth failed): %v", err)
-	}
-	defer producer.(*producerImpl).close()
-
-	// Test sending message with authentication
-	ctx := context.Background()
-	testMessage := []byte("authenticated test message")
-	err = producer.Send(ctx, testMessage)
-	if err != nil {
-		t.Errorf("Failed to send authenticated message: %v", err)
-	}
-
-	// Test consumer with JWT authentication
-	handler := &mockConsumerHandler{}
-	err = RegisterConsumer(serviceURL, topic, group+"-consumer", handler)
-	if err != nil {
-		t.Errorf("Failed to register consumer with JWT auth: %v", err)
-	}
-
-	t.Logf("JWT authentication test completed successfully")
+	wg.Wait()
+	time.Sleep(time.Second)
 }

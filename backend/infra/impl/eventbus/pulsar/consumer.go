@@ -85,8 +85,10 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 		return fmt.Errorf("create pulsar consumer failed: %w", err)
 	}
 
+	// Create cancellable context for better resource management
+	ctx, cancel := context.WithCancel(context.Background())
+
 	// Start consuming messages in a goroutine
-	ctx := context.Background()
 	safego.Go(ctx, func() {
 		defer func() {
 			consumer.Close()
@@ -96,11 +98,16 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 		for {
 			select {
 			case <-ctx.Done():
+				logs.Infof("pulsar consumer stopped for topic: %s, group: %s", topic, group)
 				return
 			default:
-				// Receive message
+				// Receive message with context timeout
 				msg, err := consumer.Receive(ctx)
 				if err != nil {
+					// Check if context was cancelled
+					if ctx.Err() != nil {
+						return
+					}
 					logs.Errorf("receive pulsar message error: %v", err)
 					continue
 				}
@@ -112,7 +119,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 					Body:  msg.Payload(),
 				}
 
-				// Handle message
+				// Handle message with context
 				if err := consumerHandler.HandleMessage(ctx, eventMsg); err != nil {
 					logs.Errorf("handle pulsar message failed, topic: %s, group: %s, err: %v", topic, group, err)
 					// Negative acknowledge on error
@@ -127,8 +134,10 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 	})
 
 	// Handle graceful shutdown
-	safego.Go(ctx, func() {
+	safego.Go(context.Background(), func() {
 		signal.WaitExit()
+		logs.Infof("shutting down pulsar consumer for topic: %s, group: %s", topic, group)
+		cancel() // Cancel the context to stop consumer loop
 		consumer.Close()
 		client.Close()
 	})
