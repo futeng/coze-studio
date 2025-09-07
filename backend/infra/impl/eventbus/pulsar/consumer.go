@@ -70,12 +70,7 @@ func RegisterConsumer(serviceURL, topic, group string, consumerHandler eventbus.
 	consumerOptions := pulsar.ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: group,
-		Type:             pulsar.Shared, // Default to shared subscription
-	}
-
-	// Handle orderly consumption
-	if option.Orderly != nil && *option.Orderly {
-		consumerOptions.Type = pulsar.Exclusive
+		Type:             pulsar.Exclusive, // Exclusive mode ensures single consumer for message ordering
 	}
 
 	// Create consumer

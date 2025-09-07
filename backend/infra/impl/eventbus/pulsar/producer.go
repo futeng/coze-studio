@@ -54,20 +54,31 @@ func NewProducer(serviceURL, topic, group string) (eventbus.Producer, error) {
 	}
 
 	// Create Pulsar client
-	client, err := pulsar.NewClient(clientOptions)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pulsar client: %w", err)
+	fmt.Printf("[DEBUG] Creating Pulsar client with URL: %s\n", serviceURL)
+	if jwtToken := os.Getenv(consts.PulsarJWTToken); jwtToken != "" {
+		fmt.Printf("[DEBUG] Using JWT authentication, token length: %d\n", len(jwtToken))
+	} else {
+		fmt.Printf("[DEBUG] No JWT token provided\n")
 	}
 
+	client, err := pulsar.NewClient(clientOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pulsar client with URL %s: %w", serviceURL, err)
+	}
+	fmt.Printf("[DEBUG] Pulsar client created successfully\n")
+
 	// Create producer
+	fmt.Printf("[DEBUG] Creating producer for topic: %s, group: %s\n", topic, group)
 	producer, err := client.CreateProducer(pulsar.ProducerOptions{
 		Topic: topic,
 		Name:  fmt.Sprintf("%s-producer", group),
 	})
 	if err != nil {
+		fmt.Printf("[DEBUG] Failed to create producer: %v\n", err)
 		client.Close()
 		return nil, fmt.Errorf("create pulsar producer failed: %w", err)
 	}
+	fmt.Printf("[DEBUG] Producer created successfully\n")
 
 	impl := &producerImpl{
 		topic:    topic,
